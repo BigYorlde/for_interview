@@ -1,0 +1,49 @@
+- name: Deploy myapp
+  hosts: myapp
+  become: yes
+
+  tasks:
+    - name: Copy myapp to remote host
+      copy:
+        src: "../myapp"
+        dest: "."
+        mode: '0777'
+    - name: Copy docker-compose file into host
+      template:
+        src: "../templates/myapp.j2"
+        dest: "./myapp/myapp.yaml"
+        mode: '0777'
+    - name: Deploy docker-compose from Make command
+      make:
+        chdir: ./myapp
+        target: up-scale
+        params:
+          scale: 5
+      become: yes
+    - name: wait for myapp will be ready
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 3306
+        state: started
+        delay: 10
+        connect_timeout: 15
+        timeout: 30
+    - name: Copy dumpfile to remote db
+      copy:
+        src: "../dump"
+        dest: "./myapp/db-data"
+        mode: '0777'
+    - name: Create database
+      make:
+        chdir: ./myapp
+        target: db-create
+        params:
+          db_name: Names
+      ignore_errors: yes
+    - name: Restore sql dump
+      make:
+        chdir: ./myapp
+        target: db-restore
+        params:
+          db_name: Names
+          db_path: /var/lib/mysql/dump/mydata.sql
